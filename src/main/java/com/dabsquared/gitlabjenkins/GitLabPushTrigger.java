@@ -6,9 +6,8 @@ import hudson.model.Action;
 import hudson.model.Item;
 import hudson.model.ParameterValue;
 import hudson.model.Result;
-import hudson.model.AbstractBuild;
-import hudson.model.AbstractProject;
 import hudson.model.Cause;
+import hudson.model.Run;
 import hudson.model.Job;
 import hudson.model.ParameterDefinition;
 import hudson.model.ParametersAction;
@@ -122,30 +121,49 @@ public class GitLabPushTrigger extends Trigger<Job<?, ?>> {
 
     public void onPost(final GitLabPushRequest req) {
     	boolean allowBuild = allowAllBranches || (allowedBranches.isEmpty() || allowedBranches.contains(getSourceBranch(req)));
+        if(allowBuild) {
+            LOGGER.log(Level.INFO, "OP-ab");
+        } else {
+            LOGGER.log(Level.INFO, "OP-not ab");
+        }
     	final ParameterizedJobMixIn scheduledJob = new ParameterizedJobMixIn() {
             @Override
             protected Job asJob() {
                 return job;
             }
-      };
-      if (triggerOnPush && (allowBuild)) {
+        };
+            LOGGER.log(Level.INFO, "OP-1");
+
+        if (triggerOnPush && (allowBuild)) {
+            LOGGER.log(Level.INFO, "OP-2");
+
             getDescriptor().queue.execute(new Runnable() {
 
                 public void run() {
+            LOGGER.log(Level.INFO, "OP-3");
+
             		LOGGER.log(Level.INFO, "{0} triggered for push.", job.getName());
 
             		String name = " #" + job.getNextBuildNumber();
             		GitLabPushCause cause = createGitLabPushCause(req);
             		Action[] actions = createActions(req);
                         // TODO: Re-add job.getQuietPeriod(), actions ?
+            LOGGER.log(Level.INFO, "OP-31");
+
             		if (scheduledJob.scheduleBuild(cause)) {
+            LOGGER.log(Level.INFO, "OP-32");
+
             			LOGGER.log(Level.INFO, "GitLab Push Request detected in {0}. Triggering {1}", new String[]{job.getName(), name});
             		} else {
+            LOGGER.log(Level.INFO, "OP-33");
+
             			LOGGER.log(Level.INFO, "GitLab Push Request detected in {0}. Job is already in the queue.", job.getName());
             		}
                 }
 
                 private GitLabPushCause createGitLabPushCause(GitLabPushRequest req) {
+            LOGGER.log(Level.INFO, "OP-4");
+
                     GitLabPushCause cause;
                     String triggeredByUser;
                     if (req.getCommits().size() > 0){
@@ -162,6 +180,8 @@ public class GitLabPushTrigger extends Trigger<Job<?, ?>> {
                 }
 
                 private Action[] createActions(GitLabPushRequest req) {
+            LOGGER.log(Level.INFO, "OP-5");
+
                     ArrayList<Action> actions = new ArrayList<Action>();
 
                     String branch = getSourceBranch(req);
@@ -291,16 +311,16 @@ public class GitLabPushTrigger extends Trigger<Job<?, ?>> {
         return values;
     }
 
-    private void setBuildCauseInJob(AbstractBuild abstractBuild){
+    private void setBuildCauseInJob(Run run){
         if(setBuildDescription){
-            Cause pcause= abstractBuild.getCause(GitLabPushCause.class);
-            Cause mcause= abstractBuild.getCause(GitLabMergeCause.class);
+            Cause pcause= run.getCause(GitLabPushCause.class);
+            Cause mcause= run.getCause(GitLabMergeCause.class);
             String desc = null;
             if(pcause!=null) desc = pcause.getShortDescription();
             if(mcause!=null) desc = mcause.getShortDescription();
             if(desc!=null && desc.length()>0){
                 try {
-                    abstractBuild.setDescription(desc);
+                    run.setDescription(desc);
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
@@ -308,7 +328,7 @@ public class GitLabPushTrigger extends Trigger<Job<?, ?>> {
         }
     }
 
-    public void onCompleted(AbstractBuild build){
+    public void onCompleted(Run build){
         Cause mCause= build.getCause(GitLabMergeCause.class);
         if (mCause != null && mCause instanceof GitLabMergeCause) {
             onCompleteMergeRequest(build,(GitLabMergeCause) mCause);
@@ -316,18 +336,18 @@ public class GitLabPushTrigger extends Trigger<Job<?, ?>> {
 
     }
 
-    private void onCompleteMergeRequest(AbstractBuild abstractBuild,GitLabMergeCause cause){
+    private void onCompleteMergeRequest(Run run,GitLabMergeCause cause){
         if(addNoteOnMergeRequest) {
             StringBuilder msg = new StringBuilder();
-            if (abstractBuild.getResult() == Result.SUCCESS) {
+            if (run.getResult() == Result.SUCCESS) {
                 String icon = addVoteOnMergeRequest ? ":+1:" : ":white_check_mark:";
                 msg.append(icon);
             } else {
                 String icon = addVoteOnMergeRequest ? ":-1:" : ":anguished:";
                 msg.append(icon);
             }
-            msg.append(" Jenkins Build ").append(abstractBuild.getResult().color.getDescription());
-            String buildUrl = Jenkins.getInstance().getRootUrl() + abstractBuild.getUrl();
+            msg.append(" Jenkins Build ").append(run.getResult().color.getDescription());
+            String buildUrl = Jenkins.getInstance().getRootUrl() + run.getUrl();
             msg.append("\n\nResults available at: ")
                     .append("[").append("Jenkins").append("](").append(buildUrl).append(")");
             try {
@@ -342,8 +362,8 @@ public class GitLabPushTrigger extends Trigger<Job<?, ?>> {
 
     }
 
-    public void onStarted(AbstractBuild abstractBuild) {
-        setBuildCauseInJob(abstractBuild);
+    public void onStarted(Run run) {
+        setBuildCauseInJob(run);
     }
 
     private String getSourceBranch(GitLabRequest req) {
@@ -388,7 +408,8 @@ public class GitLabPushTrigger extends Trigger<Job<?, ?>> {
         
         @Override
         public boolean isApplicable(Item item) {
-            if(item instanceof Job && item instanceof ParameterizedJobMixIn) {
+            if(item instanceof Job && SCMTriggerItems.asSCMTriggerItem(item) != null
+                    && item instanceof ParameterizedJobMixIn.ParameterizedJob) {
                 project = (Job) item;
                 return true;
             } else {
@@ -461,6 +482,10 @@ public class GitLabPushTrigger extends Trigger<Job<?, ?>> {
 				LOGGER.log(Level.WARNING, "Could not fetch source project''s data from Gitlab. '('{0}':' {1}')'", new String[]{ex.toString(), ex.getMessage()});
 			}
 
+            projectBranches.add("test1");
+            projectBranches.add("test2");
+            projectBranches.add("test3");
+
         	return projectBranches;
         }
         
@@ -473,27 +498,30 @@ public class GitLabPushTrigger extends Trigger<Job<?, ?>> {
         protected URIish getSourceRepoURLDefault(Job job) {
             URIish url = null;
             SCMTriggerItem item = SCMTriggerItems.asSCMTriggerItem(job); //.getScm();
+            SCM gitSCM = null;
             if(item != null) {
                 for(SCM scm : item.getSCMs()) {
-                    if(!(scm instanceof GitSCM)) {
-                        LOGGER.log(
-                                Level.WARNING,
-                                "Could not find GitSCM for project, found {0} instead (getSourceRepoURLDefault). Project = {1}, next build = {2}",
-                                new String[] { scm.getClass().getCanonicalName(),
-                                        project.getName(),
-                                        String.valueOf(project.getNextBuildNumber()) });
-                        throw new IllegalArgumentException("This repo does not use git:" + scm.getClass().getCanonicalName());
-                    }
                     if (scm instanceof GitSCM) {
-                        List<RemoteConfig> repositories = ((GitSCM) scm).getRepositories();
-                        if (!repositories.isEmpty()){
-                            RemoteConfig defaultRepository = repositories.get(repositories.size()-1);
-                            List<URIish> uris = defaultRepository.getURIs();
-                            if (!uris.isEmpty()) {
-                                url = uris.get(uris.size()-1);
-                            }                       
-                        }           
+                        gitSCM = scm;
                     } 
+                }
+            }
+            if(gitSCM == null) {
+                LOGGER.log(
+                        Level.WARNING,
+                        "Could not find GitSCM for project. Project = {1}, next build = {2}",
+                        new String[] {
+                                project.getName(),
+                                String.valueOf(project.getNextBuildNumber()) });
+                throw new IllegalArgumentException("This project does not use git:" + project.getName());
+            } else {
+                List<RemoteConfig> repositories = ((GitSCM) gitSCM).getRepositories();
+                if (!repositories.isEmpty()){
+                    RemoteConfig defaultRepository = repositories.get(repositories.size()-1);
+                    List<URIish> uris = defaultRepository.getURIs();
+                    if (!uris.isEmpty()) {
+                        url = uris.get(uris.size()-1);
+                    }                       
                 }
             }
             return url;
@@ -508,24 +536,27 @@ public class GitLabPushTrigger extends Trigger<Job<?, ?>> {
         protected String getSourceRepoNameDefault(Job job) {
             String result = null;
             SCMTriggerItem item = SCMTriggerItems.asSCMTriggerItem(job); //.getScm();
+            SCM gitSCM = null;
             if(item != null) {
                 for(SCM scm : item.getSCMs()) {
-                    if(!(scm instanceof GitSCM)) {
-                        LOGGER.log(
-                                Level.WARNING,
-                                "Could not find GitSCM for project, found {0} instead (getSourceRepoNameDefault). Project = {1}, next build = {2}",
-                                new String[] { scm.getClass().getCanonicalName(),
-                                        project.getName(),
-                                        String.valueOf(project.getNextBuildNumber()) });
-                        throw new IllegalArgumentException("This repo does not use git.:" + scm.getClass().getCanonicalName());
-                    }
                     if (scm instanceof GitSCM) {
-                        List<RemoteConfig> repositories = ((GitSCM) scm).getRepositories();
-                        if (!repositories.isEmpty()){
-                            result = repositories.get(repositories.size()-1).getName();                                                        
-                        }           
-                    } 
+                        gitSCM = scm;
+                    }
                 }
+            }
+            if(gitSCM == null) {
+                LOGGER.log(
+                        Level.WARNING,
+                        "Could not find GitSCM for project. Project = {1}, next build = {2}",
+                        new String[] { 
+                                project.getName(),
+                                String.valueOf(project.getNextBuildNumber()) });
+                throw new IllegalArgumentException("This project does not use git:" + project.getName());
+            } else {
+                List<RemoteConfig> repositories = ((GitSCM) gitSCM).getRepositories();
+                if (!repositories.isEmpty()){
+                    result = repositories.get(repositories.size()-1).getName();                                                        
+                }           
             }
             return result;
         }
