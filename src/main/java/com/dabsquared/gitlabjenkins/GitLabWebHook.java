@@ -88,11 +88,9 @@ public class GitLabWebHook implements UnprotectedRootAction {
         LOGGER.log(Level.INFO, "WebHook called with url: {0}", req.getRestOfPath());
         final Iterator<String> restOfPathParts = Splitter.on('/').omitEmptyStrings().split(req.getRestOfPath()).iterator();
         final Job<?, ?>[] projectHolder = new Job<?, ?>[] { null };
-        LOGGER.log(Level.INFO, "1");
         ACL.impersonate(ACL.SYSTEM, new Runnable() {
 
             public void run() {
-                LOGGER.log(Level.INFO, "2");
                 final Jenkins jenkins = Jenkins.getInstance();
                 if (jenkins != null) {
                     Item item = jenkins.getItemByFullName(projectName);
@@ -106,21 +104,17 @@ public class GitLabWebHook implements UnprotectedRootAction {
             }
 
         });
-        LOGGER.log(Level.INFO, "3");
 
         final Job<?, ?> project = projectHolder[0];
         if (project == null) {
-            LOGGER.log(Level.INFO, "3-BAD");
             throw HttpResponses.notFound();
         }
-        LOGGER.log(Level.INFO, "4");
 
         final List<String> paths = new ArrayList<String>();
         while (restOfPathParts.hasNext()) {
             paths.add(restOfPathParts.next());
         }
-        LOGGER.log(Level.INFO, "5");
-        
+
         /*
          * Since GitLab 7.10 the URL contains the pushed branch name.
          * Extract and store the branch name for further processing.
@@ -141,7 +135,7 @@ public class GitLabWebHook implements UnprotectedRootAction {
         }
 
         String token = req.getParameter("token");
-        LOGGER.log(Level.INFO, "6");
+
         //TODO: Check token authentication with project id. For now we are not using this.
 
         StringWriter writer = new StringWriter();
@@ -150,7 +144,6 @@ public class GitLabWebHook implements UnprotectedRootAction {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        LOGGER.log(Level.INFO, "7");
 
         String theString = writer.toString();
 
@@ -166,19 +159,15 @@ public class GitLabWebHook implements UnprotectedRootAction {
         	throw HttpResponses.ok();
         }
 
-        LOGGER.log(Level.INFO, "8");
 
         String lastPath = paths.get(paths.size()-1);
         String firstPath = paths.get(0);
         if(lastPath.equals("status.json") && !firstPath.equals("!builds")) {
-            LOGGER.log(Level.INFO, "8-1");
             String commitSHA1 = paths.get(1);
             this.generateStatusJSON(commitSHA1, project, req, res);
         } else if(lastPath.equals("build") || (lastPath.equals("status.json") && firstPath.equals("!builds"))) {
-            LOGGER.log(Level.INFO, "8-2");
             this.generateBuild(theString, project, req, res);
         } else if(lastPath.equals("status.png")) {
-            LOGGER.log(Level.INFO, "8-3");
             String branch = req.getParameter("ref");
             String commitSHA1 = req.getParameter("sha1");
             try {
@@ -191,15 +180,12 @@ public class GitLabWebHook implements UnprotectedRootAction {
                 throw HttpResponses.error(500,"Could not generate an image.");
             }
         } else if((firstPath.equals("commits") || firstPath.equals("builds")) && !lastPath.equals("status.json")) {
-            LOGGER.log(Level.INFO, "8-4");
             Run build = this.getBuildBySHA1(project, lastPath, true);
             redirectToBuildPage(res, build);
         } else{
-            LOGGER.log(Level.INFO, "8-5");
             LOGGER.warning("Dynamic request mot met: First path: '" + firstPath + "' late path: '" + lastPath + "'");
         }
 
-        LOGGER.log(Level.INFO, "9");
 
         throw HttpResponses.ok();
 
@@ -219,16 +205,20 @@ public class GitLabWebHook implements UnprotectedRootAction {
 		}
 	}
 
-    private void generateStatusJSON(String commitSHA1, Job project, StaplerRequest req, StaplerResponse rsp) {
-        SCMTriggerItem item = SCMTriggerItems.asSCMTriggerItem(project);
-        SCM gitSCM = null;
+    private SCM getGitSCM(SCMTriggerItem item) {
         if(item != null) {
             for(SCM scm : item.getSCMs()) {
                 if(scm instanceof GitSCM) {
-                    gitSCM = scm;
+                    return scm;
                 }
             }
         }
+        return null;
+    }
+
+    private void generateStatusJSON(String commitSHA1, Job project, StaplerRequest req, StaplerResponse rsp) {
+        SCMTriggerItem item = SCMTriggerItems.asSCMTriggerItem(project);
+        SCM gitSCM = getGitSCM(item);
 
         if(gitSCM == null) {
             throw new IllegalArgumentException("This repo does not use git.");
@@ -284,15 +274,8 @@ public class GitLabWebHook implements UnprotectedRootAction {
 
 
     private void generateStatusPNG(String branch, String commitSHA1, Job project, final StaplerRequest req, final StaplerResponse rsp) throws ServletException, IOException {
-        SCMTriggerItem item = SCMTriggerItems.asSCMTriggerItem(project); //.getScm();
-        SCM gitSCM = null;
-        if(item != null) {
-            for(SCM scm : item.getSCMs()) {
-                if(scm instanceof GitSCM) {
-                    gitSCM = scm;
-                }
-            }
-        }
+        SCMTriggerItem item = SCMTriggerItems.asSCMTriggerItem(project);
+        SCM gitSCM = getGitSCM(item);
 
         if(gitSCM == null) {
             throw new IllegalArgumentException("This repo does not use git.");
@@ -387,10 +370,8 @@ public class GitLabWebHook implements UnprotectedRootAction {
         GitLabPushRequest request = GitLabPushRequest.create(json);
 
         String repositoryUrl = request.getRepository().getUrl();
-            LOGGER.log(Level.INFO, "gpb-1");
 
         if (repositoryUrl == null) {
-            LOGGER.log(Level.INFO, "gpb-2");
 
             LOGGER.log(Level.WARNING, "No repository url found.");
             return;
@@ -399,49 +380,39 @@ public class GitLabWebHook implements UnprotectedRootAction {
         Authentication old = SecurityContextHolder.getContext().getAuthentication();
         SecurityContextHolder.getContext().setAuthentication(ACL.SYSTEM);
         try {
-            LOGGER.log(Level.INFO, "gpb-3");
 
             GitLabPushTrigger trigger = null;
             if (project instanceof ParameterizedJobMixIn.ParameterizedJob) {
-            LOGGER.log(Level.INFO, "gpb-4");
                 ParameterizedJobMixIn.ParameterizedJob p = (ParameterizedJobMixIn.ParameterizedJob) project;
                 for (Trigger t : p.getTriggers().values()) {
-            LOGGER.log(Level.INFO, "gpb-5");
 
                     if (t instanceof GitLabPushTrigger) {
                         trigger = (GitLabPushTrigger) t;
                     }
                 }
             }
-            LOGGER.log(Level.INFO, "gpb-6");
 
             if (trigger == null) {
-            LOGGER.log(Level.INFO, "gpb-7");
 
                 return;
             }
-            LOGGER.log(Level.INFO, "gpb-8");
 
             if(trigger.getCiSkip() && request.getLastCommit() != null) {
                 if(request.getLastCommit().getMessage().contains("[ci-skip]")) {
-            LOGGER.log(Level.INFO, "gpb-9");
 
                     LOGGER.log(Level.INFO, "Skipping due to ci-skip.");
                     return;
                 }
             }
-            LOGGER.log(Level.INFO, "gpb-10");
 
             trigger.onPost(request);
 
             if (trigger.getTriggerOpenMergeRequestOnPush()) {
-            LOGGER.log(Level.INFO, "gpb-11");
 
             	// Fetch and build open merge requests with the same source branch
             	buildOpenMergeRequests(trigger, request.getProject_id(), request.getRef());
             }
         } finally {
-            LOGGER.log(Level.INFO, "gpb-12");
 
             SecurityContextHolder.getContext().setAuthentication(old);
         }
@@ -501,55 +472,39 @@ public class GitLabWebHook implements UnprotectedRootAction {
 
     public void generateMergeRequestBuild(String json, Job project, StaplerRequest req, StaplerResponse rsp) {
         GitLabMergeRequest request = GitLabMergeRequest.create(json);
-            LOGGER.log(Level.INFO, "gmr-0");
 
         if(request.getObjectAttribute().getState().equals("closed")) {
-            LOGGER.log(Level.INFO, "gmr-1");
         	LOGGER.log(Level.INFO, "Closed Merge Request, no build started");
             return;
         }
         if(request.getObjectAttribute().getState().equals("merged")) {
-            LOGGER.log(Level.INFO, "gmr-2");
-
         	LOGGER.log(Level.INFO, "Accepted Merge Request, no build started");
             return;
         }
         Run mergeBuild = getBuildBySHA1(project, request.getObjectAttribute().getLastCommit().getId(), true);
         if(mergeBuild!=null){
-            LOGGER.log(Level.INFO, "gmr-3");
 
             LOGGER.log(Level.INFO, "Last commit in Merge Request has already been build in build #"+mergeBuild.getId());
             return;
         }
-            LOGGER.log(Level.INFO, "gmr-4");
 
         Authentication old = SecurityContextHolder.getContext().getAuthentication();
         SecurityContextHolder.getContext().setAuthentication(ACL.SYSTEM);
         try {
-            LOGGER.log(Level.INFO, "gmr-5");
-
             GitLabPushTrigger trigger = null;
             if (project instanceof ParameterizedJobMixIn.ParameterizedJob) {
                 ParameterizedJobMixIn.ParameterizedJob p = (ParameterizedJobMixIn.ParameterizedJob) project;
                 for (Trigger t : p.getTriggers().values()) {
-            LOGGER.log(Level.INFO, "gmr-6");
-
                     if (t instanceof GitLabPushTrigger) {
                         trigger = (GitLabPushTrigger) t;
                     }
                 }
             }
             if (trigger == null) {
-            LOGGER.log(Level.INFO, "gmr-7");
-
                 return;
             }
-            LOGGER.log(Level.INFO, "gmr-8");
-
             trigger.onPost(request);
         } finally {
-            LOGGER.log(Level.INFO, "gmr-9");
-
             SecurityContextHolder.getContext().setAuthentication(old);
         }
     }
