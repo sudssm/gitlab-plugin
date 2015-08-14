@@ -1,6 +1,7 @@
 package com.dabsquared.gitlabjenkins;
 
 import hudson.Extension;
+import hudson.model.AbstractBuild;
 import hudson.model.BallColor;
 import hudson.model.Item;
 import hudson.model.ItemGroup;
@@ -205,11 +206,11 @@ public class GitLabWebHook implements UnprotectedRootAction {
 		}
 	}
 
-    private SCM getGitSCM(SCMTriggerItem item) {
+    private GitSCM getGitSCM(SCMTriggerItem item) {
         if(item != null) {
             for(SCM scm : item.getSCMs()) {
                 if(scm instanceof GitSCM) {
-                    return scm;
+                    return (GitSCM) scm;
                 }
             }
         }
@@ -218,7 +219,7 @@ public class GitLabWebHook implements UnprotectedRootAction {
 
     private void generateStatusJSON(String commitSHA1, Job project, StaplerRequest req, StaplerResponse rsp) {
         SCMTriggerItem item = SCMTriggerItems.asSCMTriggerItem(project);
-        SCM gitSCM = getGitSCM(item);
+        GitSCM gitSCM = getGitSCM(item);
 
         if(gitSCM == null) {
             throw new IllegalArgumentException("This repo does not use git.");
@@ -275,7 +276,7 @@ public class GitLabWebHook implements UnprotectedRootAction {
 
     private void generateStatusPNG(String branch, String commitSHA1, Job project, final StaplerRequest req, final StaplerResponse rsp) throws ServletException, IOException {
         SCMTriggerItem item = SCMTriggerItems.asSCMTriggerItem(project);
-        SCM gitSCM = getGitSCM(item);
+        GitSCM gitSCM = getGitSCM(item);
 
         if(gitSCM == null) {
             throw new IllegalArgumentException("This repo does not use git.");
@@ -357,10 +358,8 @@ public class GitLabWebHook implements UnprotectedRootAction {
         String objectType = json.optString("object_kind");
 
         if(objectType != null && objectType.equals("merge_request")) {
-            LOGGER.log(Level.INFO, "gb-1");
             this.generateMergeRequestBuild(data, project, req, rsp);
         } else {
-            LOGGER.log(Level.INFO, "gb-2");
             this.generatePushBuild(data, project, req, rsp);
         }
     }
@@ -426,7 +425,7 @@ public class GitLabWebHook implements UnprotectedRootAction {
 			List<GitlabMergeRequest> mergeRequests = api.instance().retrieve().getAll(tailUrl, GitlabMergeRequest[].class);
 
 			for (org.gitlab.api.models.GitlabMergeRequest mr : mergeRequests) {
-				if (projectRef.endsWith(mr.getSourceBranch())) {
+				if (projectRef.endsWith(mr.getSourceBranch()) || projectRef.endsWith(mr.getTargetBranch())) {
 					LOGGER.log(Level.FINE,
 							"Generating new merge trigger from "
 									+ mr.toString() + "\n source: "
@@ -481,11 +480,12 @@ public class GitLabWebHook implements UnprotectedRootAction {
         	LOGGER.log(Level.INFO, "Accepted Merge Request, no build started");
             return;
         }
-        Run mergeBuild = getBuildBySHA1(project, request.getObjectAttribute().getLastCommit().getId(), true);
-        if(mergeBuild!=null){
-
-            LOGGER.log(Level.INFO, "Last commit in Merge Request has already been build in build #"+mergeBuild.getId());
-            return;
+        if(request.getObjectAttribute().getLastCommit()!=null) {
+            Run mergeBuild = getBuildBySHA1(project, request.getObjectAttribute().getLastCommit().getId(), true);
+            if(mergeBuild!=null){
+                LOGGER.log(Level.INFO, "Last commit in Merge Request has already been built in build #"+mergeBuild.getId());
+                return;
+            }
         }
 
         Authentication old = SecurityContextHolder.getContext().getAuthentication();
