@@ -702,7 +702,7 @@ public class GitLabPushTrigger extends Trigger<Job<?, ?>> {
                         new String[] {
                                 project.getName(),
                                 String.valueOf(project.getNextBuildNumber()) });
-                throw new IllegalArgumentException("This project does not use git:" + project.getName());
+                throw new IllegalStateException("This project does not use git:" + project.getName());
             }
 
             List<RemoteConfig> repositories = gitSCM.getRepositories();
