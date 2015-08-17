@@ -559,11 +559,11 @@ public class GitLabPushTrigger extends Trigger<Job<?, ?>> {
         }
 
         private List<String> getProjectBranches(final Job<?, ?> job) throws IOException, IllegalStateException {
-            if (!(job instanceof AbstractProject<?, ?>)) {
+            /*if (!(job instanceof AbstractProject<?, ?>)) {
                 return Lists.newArrayList();
-            }
+            }*/
 
-            final URIish sourceRepository = getSourceRepoURLDefault((AbstractProject<?, ?>) job);
+            final URIish sourceRepository = getSourceRepoURLDefault(job);
             if (sourceRepository == null) {
                 throw new IllegalStateException(Messages.GitLabPushTrigger_NoSourceRepository());
             }
